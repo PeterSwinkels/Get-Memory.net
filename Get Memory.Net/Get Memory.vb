@@ -16,12 +16,12 @@ Imports System.Runtime.InteropServices.Marshal
 'This module contains this program's core procedures.
 Module GetMemoryModule
    'The Microsoft Windows API constants, functions and structures used by this program.
-   Private Const ERROR_SUCCESS As Integer = 0%
-   Private Const MEM_COMMIT As Integer = &H1000%
-   Private Const MEM_PRIVATE As Integer = &H20000%
-   Private Const PAGE_GUARD As Integer = &H100%
-   Private Const PROCESS_QUERY_INFORMATION As Integer = &H400%
-   Private Const PROCESS_VM_READ As Integer = &H10%
+   Private Const ERROR_SUCCESS As UInteger = 0UI
+   Private Const MEM_COMMIT As UInteger = &H1000UI
+   Private Const MEM_PRIVATE As UInteger = &H20000UI
+   Private Const PAGE_GUARD As UInteger = &H100UI
+   Private Const PROCESS_QUERY_INFORMATION As UInteger = &H400UI
+   Private Const PROCESS_VM_READ As UInteger = &H10UI
 
    <StructLayout(LayoutKind.Sequential)>
    Public Structure MEMORY_BASIC_INFORMATION
@@ -48,11 +48,11 @@ Module GetMemoryModule
       Public dwProcessorRevision As UShort
    End Structure
 
-   <DllImport("Kernel32.dll", SetLastError:=True)> Private Function CloseHandle(ByVal hObject As IntPtr) As Integer
+   <DllImport("Kernel32.dll", SetLastError:=True)> Private Function CloseHandle(ByVal hObject As IntPtr) As Boolean
    End Function
-   <DllImport("Kernel32.dll", SetLastError:=True)> Private Function OpenProcess(ByVal dwDesiredAccess As Integer, ByVal bInheritHandle As Integer, ByVal dwProcessId As Integer) As Integer
+   <DllImport("Kernel32.dll", SetLastError:=True)> Private Function OpenProcess(ByVal dwDesiredAccess As UInteger, ByVal bInheritHandle As Boolean, ByVal dwProcessId As UInteger) As IntPtr
    End Function
-   <DllImport("Kernel32.dll", SetLastError:=True)> Private Function ReadProcessMemory(ByVal hProcess As IntPtr, ByVal lpBaseAddress As IntPtr, ByVal lpBuffer As IntPtr, ByVal nSize As IntPtr, ByRef lpNumberOfBytesRead As UInteger) As Integer
+   <DllImport("kernel32.dll", SetLastError:=True)> Private Function ReadProcessMemory(ByVal hProcess As IntPtr, ByVal lpBaseAddress As IntPtr, ByVal lpBuffer As Byte(), ByVal nSize As IntPtr, ByRef lpNumberOfBytesRead As UInteger) As Boolean
    End Function
    <DllImport("Kernel32.dll", SetLastError:=True)> Private Function VirtualQueryEx(ByVal hProcess As IntPtr, ByVal lpAddress As IntPtr, ByVal lpBuffer As IntPtr, ByVal dwLength As UInteger) As Integer
    End Function
@@ -93,10 +93,9 @@ Module GetMemoryModule
    End Sub
 
    'This procedure writes the memory contents of the selected process to a file.
-   Private Sub GetMemory(ProcessId As Integer, MemoryFile As String)
+   Private Sub GetMemory(ProcessId As UInteger, MemoryFile As String)
       Try
          Dim Buffer() As Byte = {}
-         Dim BufferH As New IntPtr
          Dim BytesRead As New UInteger
          Dim MemoryBasicInformation As New MEMORY_BASIC_INFORMATION
          Dim MemoryBasicInformationH As New IntPtr
@@ -114,7 +113,7 @@ Module GetMemoryModule
             SystemInformation = DirectCast(PtrToStructure(SystemInformationH, SystemInformation.GetType), SYSTEM_INFO)
             FreeHGlobal(SystemInformationH)
 
-            ProcessH = New IntPtr(CInt(CheckForError(OpenProcess(PROCESS_VM_READ Or PROCESS_QUERY_INFORMATION, CInt(False), ProcessId))))
+            ProcessH = DirectCast(CheckForError(OpenProcess(PROCESS_VM_READ Or PROCESS_QUERY_INFORMATION, False, ProcessId)), IntPtr)
             If Not ProcessH = Nothing Then
                Using FileO As New FileStream(MemoryFile, FileMode.CreateNew)
                   Offset = SystemInformation.lpMinimumApplicationAddress
@@ -128,11 +127,9 @@ Module GetMemoryModule
                      If Not (MemoryBasicInformation.Protect And PAGE_GUARD) = PAGE_GUARD Then
                         If MemoryBasicInformation.Type = MEM_PRIVATE Then
                            If MemoryBasicInformation.State = MEM_COMMIT Then
-                              BufferH = AllocHGlobal(MemoryBasicInformation.RegionSize)
-                              ReturnValue = CInt(CheckForError(ReadProcessMemory(ProcessH, Offset, BufferH, MemoryBasicInformation.RegionSize, BytesRead)))
-                              ReDim Buffer(0 To CInt(BytesRead))
-                              Copy(BufferH, Buffer, Buffer.GetLowerBound(0), Buffer.Length)
-                              FreeHGlobal(BufferH)
+                              ReDim Buffer(0 To MemoryBasicInformation.RegionSize.ToInt32 - 1)
+                              ReturnValue = CInt(CheckForError(ReadProcessMemory(ProcessH, Offset, Buffer, MemoryBasicInformation.RegionSize, BytesRead)))
+                              ReDim Preserve Buffer(0 To CInt(BytesRead))
                               If Not ReturnValue = 0 Then FileO.Write(Buffer, Buffer.GetLowerBound(0), Buffer.Length)
                            End If
                         End If
@@ -155,7 +152,7 @@ Module GetMemoryModule
    Public Sub Main()
       Try
          Dim MemoryFile As String = Nothing
-         Dim ProcessId As New Integer
+         Dim ProcessId As New UInteger
          Dim SelectedProcess As String = Nothing
 
          With My.Application.Info
@@ -173,12 +170,12 @@ Module GetMemoryModule
             If Not MemoryFile = Nothing Then
 
                If SelectedProcess.StartsWith("*") Then
-                  ProcessId = ToInt32(SelectedProcess.Substring(1))
+                  ProcessId = ToUInt32(SelectedProcess.Substring(1))
                Else
                   With New Process
                      .StartInfo.FileName = SelectedProcess
                      .Start()
-                     ProcessId = .Id
+                     ProcessId = CUInt(.Id)
                   End With
                End If
 
